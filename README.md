@@ -1,13 +1,13 @@
 # zendoo-mc-cryptolib
 
 
-`zendoo-mc-cryptolib` is an FFI library crate that exposes the [ginger-lib](https://github.com/HorizenOfficial/ginger-lib) Rust components needed to support [Zendoo](https://eprint.iacr.org/2020/123.pdf "Zendoo") in mainchain.  
+`zendoo-mc-cryptolib` is an FFI library crate that exposes the [ginger-lib](https://github.com/HorizenOfficial/ginger-lib) Rust components needed to support [Zendoo](https://eprint.iacr.org/2020/123.pdf "Zendoo") in mainchain.
 
 In particular it exposes interfaces to:
 
 * handle the finite field that is the alphabet of the zk Proving System
 * call the Poseidon hash function
-* use a Poseidon-based Merkle Tree (calculate root, verify merkle path, ...)
+* use a Poseidon-based, in-memory, random access Merkle Tree
 * verify a SNARK proof, the cryptographic proof included in Zendoo "backward transfer" certificates
 
 
@@ -21,7 +21,7 @@ The library can be built by using Cargo:
 ```
 	cargo build
 ```  
-
+Note: You need `clang` installed.
 There are a few Rust tests that can be executed still with the usual Cargo command:  
 
 ```

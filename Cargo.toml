@@ -10,61 +10,55 @@ path = "src/lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-# algebra = {version = "0.1.0", git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development"}
-# primitives = {version = "0.1.0", features = ["merkle_tree"], git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development"}
-# proof-systems = {version = "0.1.0", features = ["groth16"], git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development"}
+algebra = {version = "0.1.0", features = ["tweedle"], git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development_tmp"}
+primitives = {version = "0.1.0", features = ["tweedle", "merkle_tree"], git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development_tmp"}
+cctp_primitives = { git = "https://github.com/HorizenOfficial/zendoo-cctp-lib.git", branch = "dev" }
 
-# r1cs-crypto = {version = "0.1.0", git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development", optional = true}
-# r1cs-core = {version = "0.1.0", git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development", optional = true}
-# r1cs-std = {version = "0.1.0", git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development", optional = true}
+proof-systems = {version = "0.1.0", features = ["darlin"], git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development_tmp", optional = true }
+r1cs-crypto = {version = "0.1.0", features = ["tweedle"], git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development_tmp", optional = true }
+r1cs-core = {version = "0.1.0", git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development_tmp", optional = true}
+r1cs-std = {version = "0.1.0", features = ["tweedle"], git = "https://github.com/HorizenOfficial/ginger-lib.git", branch = "development_tmp", optional = true}
 
 maybe-uninit = "=2.0.0"
 rand = "0.7.3"
 winapi = "=0.3.6"
-lazy_static = "=1.2.0"
+lazy_static = "=1.4.0"
 libc = "=0.2.70"
-cfg-if = "= 0.1.2"
-
-[dependencies.algebra]
-git = "https://github.com/HorizenOfficial/ginger-lib.git"
-rev = "69f3c0b2f80a90379587fa5a5cb0e9be130cba6e"
-version = "0.1.0"
-
-[dependencies.primitives]
-git = "https://github.com/HorizenOfficial/ginger-lib.git"
-rev = "69f3c0b2f80a90379587fa5a5cb0e9be130cba6e"
-features = ["merkle_tree"]
-version = "0.1.0"
-
-[dependencies.proof-systems]
-git = "https://github.com/HorizenOfficial/ginger-lib.git"
-rev = "69f3c0b2f80a90379587fa5a5cb0e9be130cba6e"
-features = ["groth16"]
-version = "0.1.0"
-
-[dependencies.r1cs-crypto]
-git = "https://github.com/HorizenOfficial/ginger-lib.git"
-rev = "69f3c0b2f80a90379587fa5a5cb0e9be130cba6e"
-version = "0.1.0"
-optional = true
-
-[dependencies.r1cs-core]
-git = "https://github.com/HorizenOfficial/ginger-lib.git"
-rev = "69f3c0b2f80a90379587fa5a5cb0e9be130cba6e"
-version = "0.1.0"
-optional = true
-
-[dependencies.r1cs-std]
-git = "https://github.com/HorizenOfficial/ginger-lib.git"
-rev = "69f3c0b2f80a90379587fa5a5cb0e9be130cba6e"
-version = "0.1.0"
-optional = true
-
+cfg-if = "=1.0.0"
 
 [features]
-mc-test-circuit = ["r1cs-crypto", "r1cs-core", "r1cs-std"]
+default = [ "parallel", "asm" ]
+parallel = [ "algebra/parallel" ]
+asm = [
+    "algebra/llvm_asm",
+    "primitives/llvm_asm",
+    "cctp_primitives/asm",
+    "proof-systems/llvm_asm",
+    "r1cs-crypto/llvm_asm",
+    "r1cs-std/llvm_asm"
+]
+mc-test-circuit = ["proof-systems", "r1cs-crypto", "r1cs-core", "r1cs-std"]
 
 [profile.release]
 #lto = true
 #panic = 'abort'
 codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+lto = "thin"
+incremental = true
+debug-assertions = true
+debug = true
+
+# Uncomment these lines for local development paths
+
+#[patch.'https://github.com/HorizenOfficial/ginger-lib.git']
+#algebra = { path = '../ginger-lib/algebra' }
+#primitives = { path = '../ginger-lib/primitives' }
+#r1cs-core = { path = '../ginger-lib/r1cs/core' }
+#r1cs-crypto = { path = '../ginger-lib/r1cs/gadgets/crypto' }
+#r1cs-std = { path = '../ginger-lib/r1cs/gadgets/std' }
+#
+#[patch.'https://github.com/HorizenOfficial/zendoo-cctp-lib.git']
+#cctp_primitives = { path = '../zendoo-cctp-lib/cctp_primitives' }

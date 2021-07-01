@@ -1,3 +1,7 @@
 target
-Cargo.lock
+examples/bin_SampleCalls
+mc_test/mcTest
+
+# Intellij
 .idea
+/*.iml
