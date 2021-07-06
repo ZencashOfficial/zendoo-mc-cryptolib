@@ -518,8 +518,8 @@ TEST_CASE("Commitment Tree") {
     CHECK(ret_code == CctpErrorCode::OK);
 
     unsigned char expected_root_after_cert_bytes[FIELD_SIZE] = {
-        152, 182, 153, 190, 231, 46, 36, 235, 71, 85, 229, 218, 139, 153, 82, 151,
-        109, 110, 163, 4, 67, 104, 185, 240, 112, 49, 168, 58, 63, 76, 27, 26
+        170, 55, 27, 126, 252, 168, 162, 120, 2, 225, 63, 210, 253, 205, 193, 12,
+        188, 162, 37, 130, 218, 101, 142, 121, 95, 146, 105, 63, 197, 28, 16, 33
     };
     check_root(expected_root_after_cert_bytes, root_after_cert);
 
@@ -527,6 +527,7 @@ TEST_CASE("Commitment Tree") {
     zendoo_field_free(new_sc_id);
     zendoo_field_free(nullifier);
     zendoo_field_free(end_cum_comm_tree_root);
+    zendoo_commitment_tree_delete(cmt);
 }
 
 TEST_SUITE("Bit Vector") {
@@ -579,15 +580,15 @@ TEST_SUITE("Single Proof Verifier") {
 
     static std::string params_dir = std::string("../examples");
     static size_t params_dir_len = params_dir.size();
+    static const uint32_t NUM_CONSTRAINTS = 1 << 10;
+    static const size_t SEGMENT_SIZE = 1 << 9;
 
     bool initDlogKeys() {
         CctpErrorCode ret_code = CctpErrorCode::OK;
 
         // Bootstrap keys
         bool init_result = zendoo_init_dlog_keys(
-            1 << 9,
-            (path_char_t*)params_dir.c_str(),
-            params_dir_len,
+            SEGMENT_SIZE,
             &ret_code
         );
         CHECK(init_result == true);
@@ -604,6 +605,7 @@ TEST_SUITE("Single Proof Verifier") {
         CctpErrorCode ret_code = CctpErrorCode::OK;
 
         // Generate random data
+        auto sc_id = zendoo_get_field_from_long(10);
         auto constant = zendoo_get_field_from_long(1);
         auto end_cum_comm_tree_root = zendoo_get_field_from_long(2);
         uint32_t epoch_number = 10;
@@ -614,16 +616,26 @@ TEST_SUITE("Single Proof Verifier") {
         //Create dummy bt list
         size_t bt_list_len = numBt;
         std::vector<backward_transfer_t> bt_list;
+        backward_transfer_t* bt_list_ptr = NULL;
         if (bt_list_len != 0) {
             for(int i = 0; i < bt_list_len; i++){
                 bt_list.push_back({{255}, 10});
             }
+            bt_list_ptr = bt_list.data();
         }
 
         // Create dummy custom_fields re-using fields we already have
         const field_t* custom_fields[] = {constant, end_cum_comm_tree_root};
 
         // Specify paths
+        auto pk_ps_type = zendoo_get_sc_pk_proving_system_type_from_file(
+            (path_char_t*)pk_path.c_str(),
+            pk_path.size(),
+            &ret_code
+        );
+        CHECK(ret_code == CctpErrorCode::OK);
+        CHECK(pk_ps_type != ProvingSystem::Undefined);
+
         auto sc_pk = zendoo_deserialize_sc_pk_from_file(
             (path_char_t*)pk_path.c_str(),
             pk_path.size(),
@@ -635,14 +647,22 @@ TEST_SUITE("Single Proof Verifier") {
 
         CHECK(
             zendoo_create_cert_test_proof(
-                zk, constant, epoch_number, quality, bt_list.data(), bt_list_len,
+                zk, constant, sc_id, epoch_number, quality, bt_list_ptr, bt_list_len,
                 custom_fields, 2, end_cum_comm_tree_root, btr_fee, ft_min_amount,
-                sc_pk, (path_char_t*)proof_path.c_str(), proof_path.size(), &ret_code
+                sc_pk, (path_char_t*)proof_path.c_str(), proof_path.size(), NUM_CONSTRAINTS, &ret_code
             ) == true
         );
         CHECK(ret_code == CctpErrorCode::OK);
 
         // Verify proof with correct data
+        auto proof_ps_type = zendoo_get_sc_proof_proving_system_type_from_file(
+            (path_char_t*)proof_path.c_str(),
+            proof_path.size(),
+            &ret_code
+        );
+        CHECK(ret_code == CctpErrorCode::OK);
+        CHECK(proof_ps_type != ProvingSystem::Undefined);
+        CHECK(proof_ps_type == pk_ps_type);
 
         auto sc_proof = zendoo_deserialize_sc_proof_from_file(
             (path_char_t*)proof_path.c_str(),
@@ -652,6 +672,15 @@ TEST_SUITE("Single Proof Verifier") {
         );
         CHECK(sc_proof != NULL);
         CHECK(ret_code == CctpErrorCode::OK);
+
+        auto vk_ps_type = zendoo_get_sc_vk_proving_system_type_from_file(
+            (path_char_t*)vk_path.c_str(),
+            vk_path.size(),
+            &ret_code
+        );
+        CHECK(ret_code == CctpErrorCode::OK);
+        CHECK(vk_ps_type != ProvingSystem::Undefined);
+        CHECK(proof_ps_type == vk_ps_type);
 
         auto sc_vk = zendoo_deserialize_sc_vk_from_file(
             (path_char_t*)vk_path.c_str(),
@@ -665,7 +694,7 @@ TEST_SUITE("Single Proof Verifier") {
         // Positive verification
         CHECK(
             zendoo_verify_certificate_proof(
-                constant, epoch_number, quality, bt_list.data(), bt_list_len,
+                constant, sc_id, epoch_number, quality, bt_list_ptr, bt_list_len,
                 custom_fields, 2, end_cum_comm_tree_root,
                 btr_fee, ft_min_amount, sc_proof, sc_vk, &ret_code
             ) == true
@@ -676,7 +705,7 @@ TEST_SUITE("Single Proof Verifier") {
         auto wrong_constant = zendoo_get_field_from_long(2);
         CHECK(
             zendoo_verify_certificate_proof(
-                wrong_constant, epoch_number, quality, bt_list.data(), bt_list_len,
+                wrong_constant, sc_id, epoch_number, quality, bt_list_ptr, bt_list_len,
                 custom_fields, 2, end_cum_comm_tree_root, btr_fee, ft_min_amount,
                 sc_proof, sc_vk, &ret_code
             ) == false
@@ -684,6 +713,7 @@ TEST_SUITE("Single Proof Verifier") {
         CHECK(ret_code == CctpErrorCode::OK);
 
         // Free memory
+        zendoo_field_free(sc_id);
         zendoo_field_free(constant);
         zendoo_field_free(wrong_constant);
         zendoo_field_free(end_cum_comm_tree_root);
@@ -706,6 +736,7 @@ TEST_SUITE("Single Proof Verifier") {
             zendoo_generate_mc_test_params(
                 TestCircuitType::Certificate,
                 ProvingSystem::CoboundaryMarlin,
+                NUM_CONSTRAINTS,
                 (path_char_t*)params_dir.c_str(),
                 params_dir_len,
                 &ret_code
@@ -739,6 +770,7 @@ TEST_SUITE("Single Proof Verifier") {
            zendoo_generate_mc_test_params(
                TestCircuitType::Certificate,
                ProvingSystem::Darlin,
+               NUM_CONSTRAINTS,
                (path_char_t*)params_dir.c_str(),
                params_dir_len,
                &ret_code
@@ -777,7 +809,7 @@ TEST_SUITE("Single Proof Verifier") {
         auto end_cum_comm_tree_root = zendoo_get_field_from_long(2);
         field_t* cert_data_hash;
         if (phantomCertDataHash) {
-            cert_data_hash = zendoo_get_phantom_cert_data_hash();
+            cert_data_hash = NULL;
         } else {
             cert_data_hash = zendoo_get_field_from_long(3);
         }
@@ -786,6 +818,14 @@ TEST_SUITE("Single Proof Verifier") {
         auto mc_pk_hash = BufferWithSize(mc_pk_hash_vec.data(), mc_pk_hash_vec.size());
 
         // Specify paths
+        auto pk_ps_type = zendoo_get_sc_pk_proving_system_type_from_file(
+            (path_char_t*)pk_path.c_str(),
+            pk_path.size(),
+            &ret_code
+        );
+        CHECK(ret_code == CctpErrorCode::OK);
+        CHECK(pk_ps_type != ProvingSystem::Undefined);
+
         auto sc_pk = zendoo_deserialize_sc_pk_from_file(
             (path_char_t*)pk_path.c_str(),
             pk_path.size(),
@@ -798,13 +838,22 @@ TEST_SUITE("Single Proof Verifier") {
         CHECK(
             zendoo_create_csw_test_proof(
                 zk, amount, sc_id, nullifier, &mc_pk_hash, cert_data_hash, end_cum_comm_tree_root,
-                sc_pk, (path_char_t*)proof_path.c_str(), proof_path.size(),
+                sc_pk, (path_char_t*)proof_path.c_str(), proof_path.size(), NUM_CONSTRAINTS,
                 &ret_code
             ) == true
         );
         CHECK(ret_code == CctpErrorCode::OK);
 
         // Verify proof with correct data
+        auto proof_ps_type = zendoo_get_sc_proof_proving_system_type_from_file(
+            (path_char_t*)proof_path.c_str(),
+            proof_path.size(),
+            &ret_code
+        );
+        CHECK(ret_code == CctpErrorCode::OK);
+        CHECK(proof_ps_type != ProvingSystem::Undefined);
+        CHECK(proof_ps_type == pk_ps_type);
+
         auto sc_proof = zendoo_deserialize_sc_proof_from_file(
             (path_char_t*)proof_path.c_str(),
             proof_path.size(),
@@ -813,6 +862,15 @@ TEST_SUITE("Single Proof Verifier") {
         );
         CHECK(sc_proof != NULL);
         CHECK(ret_code == CctpErrorCode::OK);
+
+        auto vk_ps_type = zendoo_get_sc_vk_proving_system_type_from_file(
+            (path_char_t*)vk_path.c_str(),
+            vk_path.size(),
+            &ret_code
+        );
+        CHECK(ret_code == CctpErrorCode::OK);
+        CHECK(vk_ps_type != ProvingSystem::Undefined);
+        CHECK(proof_ps_type == vk_ps_type);
 
         auto sc_vk = zendoo_deserialize_sc_vk_from_file(
             (path_char_t*)vk_path.c_str(),
@@ -846,6 +904,7 @@ TEST_SUITE("Single Proof Verifier") {
         zendoo_field_free(sc_id);
         zendoo_field_free(wrong_sc_id);
         zendoo_field_free(cert_data_hash);
+        zendoo_field_free(nullifier);
         zendoo_field_free(end_cum_comm_tree_root);
         zendoo_sc_pk_free(sc_pk);
         zendoo_sc_vk_free(sc_vk);
@@ -866,6 +925,7 @@ TEST_SUITE("Single Proof Verifier") {
             zendoo_generate_mc_test_params(
                 TestCircuitType::CSW,
                 ProvingSystem::CoboundaryMarlin,
+                NUM_CONSTRAINTS,
                 (path_char_t*)params_dir.c_str(),
                 params_dir_len,
                 &ret_code
@@ -899,6 +959,7 @@ TEST_SUITE("Single Proof Verifier") {
            zendoo_generate_mc_test_params(
                TestCircuitType::CSW,
                ProvingSystem::Darlin,
+               NUM_CONSTRAINTS,
                (path_char_t*)params_dir.c_str(),
                params_dir_len,
                &ret_code
@@ -917,12 +978,8 @@ TEST_SUITE("Single Proof Verifier") {
         create_verify_csw_proof(false, false, proof_path, pk_path, vk_path);
 
         // Delete files
-        auto ck_g1_path = params_dir + std::string("/ck_g1");
-        auto ck_g2_path = params_dir + std::string("/ck_g2");
         remove(pk_path.c_str());
         remove(vk_path.c_str());
-        remove(ck_g1_path.c_str());
-        remove(ck_g2_path.c_str());
     }
 }
 
@@ -930,6 +987,9 @@ TEST_SUITE("ZendooBatchProofVerifier") {
 
     static std::string params_dir = std::string("../examples");
     static size_t params_dir_len = params_dir.size();
+    static const uint32_t NUM_CONSTRAINTS = 1 << 10;
+    static const size_t MAX_SEGMENT_SIZE = 1 << 17;
+    static const size_t SUPPORTED_SEGMENT_SIZE = 1 << 9;
 
     void add_random_csw_proof(
         ZendooBatchProofVerifier* batch_verifier,
@@ -944,7 +1004,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
         auto sc_id = zendoo_get_field_from_long(1);
         auto nullifier = zendoo_get_field_from_long(11);
         auto end_cum_comm_tree_root = zendoo_get_field_from_long(2);
-        auto cert_data_hash = zendoo_get_phantom_cert_data_hash();
+        field_t* cert_data_hash = NULL;
 
         uint64_t amount = 100;
         std::vector<unsigned char> mc_pk_hash_vec(MC_PK_SIZE, 255);
@@ -965,7 +1025,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
         CHECK(
             zendoo_create_csw_test_proof(
                 false, amount, sc_id, nullifier, &mc_pk_hash, cert_data_hash, end_cum_comm_tree_root,
-                sc_pk, (path_char_t*)proof_path.c_str(), proof_path.size(),
+                sc_pk, (path_char_t*)proof_path.c_str(), proof_path.size(), NUM_CONSTRAINTS,
                 &ret_code
             ) == true
         );
@@ -1006,6 +1066,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
 
         // Free memory
         zendoo_field_free(sc_id);
+        zendoo_field_free(nullifier);
         zendoo_field_free(cert_data_hash);
         zendoo_field_free(end_cum_comm_tree_root);
         zendoo_sc_pk_free(sc_pk);
@@ -1026,6 +1087,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
         CctpErrorCode ret_code = CctpErrorCode::OK;
 
         // Generate random data
+        auto sc_id = zendoo_get_field_from_long(10);
         auto constant = zendoo_get_field_from_long(1);
         auto end_cum_comm_tree_root = zendoo_get_field_from_long(2);
         uint32_t epoch_number = 10;
@@ -1047,9 +1109,9 @@ TEST_SUITE("ZendooBatchProofVerifier") {
         auto proof_path = params_dir + std::string("/test_proof");
         CHECK(
             zendoo_create_cert_test_proof(
-                false, constant, epoch_number, quality, NULL, 0,
+                false, constant, sc_id, epoch_number, quality, NULL, 0,
                 NULL, 0, end_cum_comm_tree_root, btr_fee, ft_min_amount, sc_pk,
-                (path_char_t*)proof_path.c_str(), proof_path.size(),
+                (path_char_t*)proof_path.c_str(), proof_path.size(), NUM_CONSTRAINTS,
                 &ret_code
             ) == true
         );
@@ -1081,13 +1143,14 @@ TEST_SUITE("ZendooBatchProofVerifier") {
         }
         CHECK(
             batch_verifier->add_certificate_proof(
-                proof_id, constant, epoch_number, quality, NULL, 0,
+                proof_id, constant, sc_id, epoch_number, quality, NULL, 0,
                 NULL, 0, end_cum_comm_tree_root, btr_fee, ft_min_amount, sc_proof, sc_vk, &ret_code
             ) == true
         );
         CHECK(ret_code == CctpErrorCode::OK);
 
         // Free memory
+        zendoo_field_free(sc_id);
         zendoo_field_free(constant);
         zendoo_field_free(end_cum_comm_tree_root);
         zendoo_sc_pk_free(sc_pk);
@@ -1106,10 +1169,8 @@ TEST_SUITE("ZendooBatchProofVerifier") {
 
         // Bootstrap keys used for proving
         bool init_result = zendoo_init_dlog_keys_test_mode(
-            1 << 17,
-            1 << 9,
-            (path_char_t*)params_dir.c_str(),
-            params_dir_len,
+            MAX_SEGMENT_SIZE,
+            SUPPORTED_SEGMENT_SIZE,
             &ret_code
         );
         CHECK(init_result == true);
@@ -1120,6 +1181,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
            zendoo_generate_mc_test_params(
                TestCircuitType::CSW,
                ProvingSystem::Darlin,
+               NUM_CONSTRAINTS,
                (path_char_t*)params_dir.c_str(),
                params_dir_len,
                &ret_code
@@ -1132,6 +1194,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
            zendoo_generate_mc_test_params(
                TestCircuitType::CSW,
                ProvingSystem::CoboundaryMarlin,
+               NUM_CONSTRAINTS,
                (path_char_t*)params_dir.c_str(),
                params_dir_len,
                &ret_code
@@ -1144,6 +1207,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
            zendoo_generate_mc_test_params(
                TestCircuitType::Certificate,
                ProvingSystem::Darlin,
+               NUM_CONSTRAINTS,
                (path_char_t*)params_dir.c_str(),
                params_dir_len,
                &ret_code
@@ -1157,6 +1221,7 @@ TEST_SUITE("ZendooBatchProofVerifier") {
            zendoo_generate_mc_test_params(
                TestCircuitType::Certificate,
                ProvingSystem::CoboundaryMarlin,
+               NUM_CONSTRAINTS,
                (path_char_t*)params_dir.c_str(),
                params_dir_len,
                &ret_code
@@ -1213,15 +1278,8 @@ TEST_SUITE("ZendooBatchProofVerifier") {
             }
         }
 
-        // Bootstrap new keys for verification, bigger than the ones used for proving
-        // and check everything is ok
-        remove((params_dir + std::string("/ck_g1")).c_str());
-        remove((params_dir + std::string("/ck_g2")).c_str());
-
         bool init_result_2 = zendoo_init_dlog_keys(
-            1 << 17,
-            (path_char_t*)params_dir.c_str(),
-            params_dir_len,
+            MAX_SEGMENT_SIZE,
             &ret_code
         );
         CHECK(init_result_2 == true);
@@ -1229,51 +1287,57 @@ TEST_SUITE("ZendooBatchProofVerifier") {
 
         // Batch verify all proofs
         auto result_1 = batch_verifier.batch_verify_all(&ret_code);
-        CHECK(result_1.result == true);
-        CHECK(result_1.failing_proof == -1);
+        CHECK(result_1->result == true);
+        CHECK(result_1->failing_proofs == NULL);
+        CHECK(result_1->failing_proofs_len == 0);
         CHECK(ret_code == CctpErrorCode::OK);
+        zendoo_free_batch_proof_verifier_result(result_1);
 
         // Batch verify subset
         const uint32_t ids[5] = {0, 2, 5, 7, 9};
         auto result_2 = batch_verifier.batch_verify_subset(ids, 5, &ret_code);
-        CHECK(result_2.result == true);
-        CHECK(result_2.failing_proof == -1);
+        CHECK(result_2->result == true);
+        CHECK(result_2->failing_proofs == NULL);
+        CHECK(result_2->failing_proofs_len == 0);
         CHECK(ret_code == CctpErrorCode::OK);
+        zendoo_free_batch_proof_verifier_result(result_2);
 
-        // Add a wrong proof to the verifier
-        add_random_cert_proof(
-            &batch_verifier,
-            num_proofs,
-            pk_path + std::string("/cob_marlin_cert_test_pk"),
-            vk_path + std::string("/cob_marlin_cert_test_vk"),
-            true
-        );
+        // Add wrong proofs to the verifier
+        for(uint32_t i = num_proofs; i < num_proofs + 10; i++) {
+            add_random_cert_proof(
+                &batch_verifier,
+                i,
+                pk_path + std::string("/cob_marlin_cert_test_pk"),
+                vk_path + std::string("/cob_marlin_cert_test_vk"),
+                true
+            );
+        }
 
         // Check batch verification of all proofs fails
         auto result_3 = batch_verifier.batch_verify_all(&ret_code);
-        CHECK(result_3.result == false);
+        CHECK(result_3->result == false);
+        CHECK(result_3->failing_proofs != NULL);
+        CHECK(result_3->failing_proofs_len == 10);
         CHECK(ret_code == CctpErrorCode::OK);
 
-        // We should be able to retrieve the index of the failing proof
-        CHECK(result_3.failing_proof == num_proofs);
+        // We should be able to retrieve the indices of the failing proof
+        for(uint32_t i = 0; i < num_proofs; i++){
+            CHECK(result_3->failing_proofs[i] == i + 10);
+        }
+        zendoo_free_batch_proof_verifier_result(result_3);
 
         // Check batch verification of all proofs minus the new one passes
         const uint32_t new_ids[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
         auto result_4 = batch_verifier.batch_verify_subset(new_ids, 10, &ret_code);
-        CHECK(result_4.result == true);
-        CHECK(result_4.failing_proof == -1);
+        CHECK(result_4->result == true);
+        CHECK(result_4->failing_proofs == NULL);
+        CHECK(result_4->failing_proofs_len == 0);
         CHECK(ret_code == CctpErrorCode::OK);
-
-        // Bootstrap new keys for verification, smaller than the ones used for proving
-        // and assert failure
-        remove((params_dir + std::string("/ck_g1")).c_str());
-        remove((params_dir + std::string("/ck_g2")).c_str());
+        zendoo_free_batch_proof_verifier_result(result_4);
 
         bool init_result_3 = zendoo_init_dlog_keys_test_mode(
-            1 << 17,
-            1 << 8,
-            (path_char_t*)params_dir.c_str(),
-            params_dir_len,
+            MAX_SEGMENT_SIZE,
+            SUPPORTED_SEGMENT_SIZE/2,
             &ret_code
         );
         CHECK(init_result_3 == true);
@@ -1281,20 +1345,15 @@ TEST_SUITE("ZendooBatchProofVerifier") {
 
         // Check batch verification of all valid proofs fails
         auto result_5 = batch_verifier.batch_verify_subset(new_ids, 10, &ret_code);
-        CHECK(result_5.result == false);
-        CHECK(result_5.failing_proof == -1); // Should fail in the hard part, so it won't be possible to determine the index
+        CHECK(result_5->result == false);
+        CHECK(result_5->failing_proofs == NULL);
+        CHECK(result_5->failing_proofs_len == 0); // Should fail in the hard part, so it won't be possible to determine the index
         CHECK(ret_code == CctpErrorCode::OK);
-
-        // Bootstrap new keys for verification, but derived from bigger keys than the original
-        // ones and check verification fails
-        remove((params_dir + std::string("/ck_g1")).c_str());
-        remove((params_dir + std::string("/ck_g2")).c_str());
+        zendoo_free_batch_proof_verifier_result(result_5);
 
         bool init_result_4 = zendoo_init_dlog_keys_test_mode(
-            1 << 18,
-            1 << 17,
-            (path_char_t*)params_dir.c_str(),
-            params_dir_len,
+            MAX_SEGMENT_SIZE * 2,
+            MAX_SEGMENT_SIZE,
             &ret_code
         );
         CHECK(init_result_4 == true);
@@ -1302,11 +1361,17 @@ TEST_SUITE("ZendooBatchProofVerifier") {
 
         // Check batch verification of all valid proofs fails
         auto result_6 = batch_verifier.batch_verify_subset(new_ids, 10, &ret_code);
+        CHECK(result_6->result == false);
+        CHECK(result_6->failing_proofs != NULL);
+        CHECK(result_6->failing_proofs_len == 10);
         CHECK(ret_code == CctpErrorCode::OK);
-        CHECK(result_6.result == false);
-        // Hash of the key will differ, so we expect failure in the succinct part, e.g. we should
-        // be able to get the index of the first failing proof
-        CHECK(result_6.failing_proof != -1);
+
+        // Hash of the key will differ, so we expect failure in the succinct part,
+        // all proofs will fail, therefore we should get all their indices
+        for(uint32_t i = 0; i < num_proofs; i++){
+            CHECK(result_6->failing_proofs[i] == i);
+        }
+        zendoo_free_batch_proof_verifier_result(result_6);
 
         // Delete files
         remove((pk_path + std::string("/darlin_csw_test_pk")).c_str());
@@ -1317,9 +1382,6 @@ TEST_SUITE("ZendooBatchProofVerifier") {
         remove((vk_path + std::string("/cob_marlin_csw_test_vk")).c_str());
         remove((pk_path + std::string("/cob_marlin_cert_test_pk")).c_str());
         remove((vk_path + std::string("/cob_marlin_cert_test_vk")).c_str());
-        remove((params_dir + std::string("/ck_g1")).c_str());
-        remove((params_dir + std::string("/ck_g2")).c_str());
-
         // Destructor of ZendooBatchVerifier will be automatically called once
         // out of scope and the memory Rust-side will be automatically freed.
     }

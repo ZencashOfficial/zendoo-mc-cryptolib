@@ -25,7 +25,7 @@ Note: You need `clang` installed.
 There are a few Rust tests that can be executed still with the usual Cargo command:  
 
 ```
-	cargo test
+	cargo test --all-features
 ```  
 
 
