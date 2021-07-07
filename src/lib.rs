@@ -1,4 +1,4 @@
-use algebra::{UniformRand, CanonicalSerialize};
+use algebra::{UniformRand, CanonicalSerialize, SemanticallyValid};
 use libc::{c_uchar, c_uint};
 use rand::rngs::OsRng;
 use std::{
@@ -1556,30 +1556,12 @@ pub extern "C" fn zendoo_verify_ginger_merkle_path(
     let root = try_read_raw_pointer!("root", root, ret_code, false);
     let leaf = try_read_raw_pointer!("leaf", leaf, ret_code, false);
 
-    match verify_ginger_merkle_path(path, height, leaf, root) {
-        Ok(result) => result,
-        Err(e) => {
-            *ret_code = CctpErrorCode::MerkleTreeError;
-            println!("{:?}", format!("Error verifying merkle path: {:?}", e));
-            false
-        }
+    if !path.is_valid() {
+        eprintln!("Invalid Merkle Path");
+        *ret_code = CctpErrorCode::InvalidValue;
+        return false;
     }
-}
 
-#[no_mangle]
-pub extern "C" fn zendoo_verify_ginger_merkle_path_from_raw(
-    path: *const GingerMHTPath,
-    height: usize,
-    leaf: *const FieldElement,
-    root: *const FieldElement,
-    ret_code: &mut CctpErrorCode,
-) -> bool
-{
-    let path = try_read_raw_pointer!("path", path, ret_code, false);
-    let root = try_read_raw_pointer!("root", root, ret_code, false);
-    let leaf = try_read_raw_pointer!("leaf", leaf, ret_code, false);
-
-    // Verify path
     match verify_ginger_merkle_path(path, height, leaf, root) {
         Ok(result) => result,
         Err(e) => {

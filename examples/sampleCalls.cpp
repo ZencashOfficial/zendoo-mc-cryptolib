@@ -1341,7 +1341,9 @@ TEST_SUITE("ZendooBatchProofVerifier") {
         auto result_5 = batch_verifier.batch_verify_subset(new_ids, 10, &ret_code);
         CHECK(result_5->result == false);
         CHECK(result_5->failing_proofs == NULL);
-        CHECK(result_5->failing_proofs_len == 0); // Should fail in the hard part, so it won't be possible to determine the index
+        // Should fail in the hard part due to invalid MSM (scalars > bases),
+        // so it won't be possible to determine the index.
+        CHECK(result_5->failing_proofs_len == 0);
         CHECK(ret_code == CctpErrorCode::OK);
 
         bool init_result_4 = zendoo_init_dlog_keys_test_mode(
