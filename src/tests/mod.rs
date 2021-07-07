@@ -141,13 +141,13 @@ fn serialization_deserialization_bench_vk_proof() {
 
         // Generate SNARK keys
         println!("Generate SNARK pk and vk...");
-        let (pk, vk) = crate::mc_test_circuits::cert::generate_parameters(ProvingSystem::Darlin, num_constraints).unwrap();
+        let (pk, vk) = crate::mc_test_circuits::cert::generate_parameters(ProvingSystem::Darlin, num_constraints, true).unwrap();
 
         println!("Generate proof...");
         let proof = crate::mc_test_circuits::cert::generate_proof(
             &pk,
             true,
-            &FieldElement::rand(&mut rng),
+            Some(&FieldElement::rand(&mut rng)),
             &FieldElement::rand(&mut rng),
             0,
             0,

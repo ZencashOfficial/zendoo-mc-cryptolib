@@ -26,30 +26,33 @@ type FieldElementGadget = FrGadget;
 
 fn enforce_cert_inputs_gadget<CS: ConstraintSystem<FieldElement>>(
     mut cs:                               CS,
+    constant_present:                     bool,
     constant:                             Option<FieldElement>,
     cert_data_hash:                       Option<FieldElement>,
     num_constraints:                      u32,
 ) -> Result<(), SynthesisError>
 {
-    let constant_g = FieldElementGadget::alloc(
-        cs.ns(|| "alloc constant"),
-        || constant.ok_or(SynthesisError::AssignmentMissing)
-    )?;
-
-    let expected_constant_g = FieldElementGadget::alloc_input(
-        cs.ns(|| "alloc expected_constant"),
-        || constant.ok_or(SynthesisError::AssignmentMissing)
-    )?;
-
-    for i in 0..(num_constraints - 1)/8 {
-        let b = constant_g.is_eq(
-            cs.ns(|| format!("expected_constant_is_eq_actual_{}", i)),
-            &expected_constant_g
+    if constant_present {
+        let constant_g = FieldElementGadget::alloc(
+            cs.ns(|| "alloc constant"),
+            || constant.ok_or(SynthesisError::AssignmentMissing)
         )?;
-        b.enforce_equal(
-            cs.ns(|| format!("expected_constant_must_be_eq_actual_{}", i)),
-            &Boolean::Constant(true)
+
+        let expected_constant_g = FieldElementGadget::alloc_input(
+            cs.ns(|| "alloc expected_constant"),
+            || constant.ok_or(SynthesisError::AssignmentMissing)
         )?;
+
+        for i in 0..(num_constraints - 1) / 8 {
+            let b = constant_g.is_eq(
+                cs.ns(|| format!("expected_constant_is_eq_actual_{}", i)),
+                &expected_constant_g
+            )?;
+            b.enforce_equal(
+                cs.ns(|| format!("expected_constant_must_be_eq_actual_{}", i)),
+                &Boolean::Constant(true)
+            )?;
+        }
     }
 
     let cert_data_hash_g = FieldElementGadget::alloc(
@@ -62,7 +65,9 @@ fn enforce_cert_inputs_gadget<CS: ConstraintSystem<FieldElement>>(
         || cert_data_hash.ok_or(SynthesisError::AssignmentMissing)
     )?;
 
-    for i in 0..(num_constraints - 1)/8 {
+    let remaining_constraints = if constant_present { (num_constraints - 1)/8 } else { (num_constraints - 1)/4 };
+
+    for i in 0..remaining_constraints {
         let b = cert_data_hash_g.is_eq(
             cs.ns(|| format!("expected_cert_data_hash_is_eq_actual_{}", i)),
             &expected_cert_data_hash_g
@@ -79,6 +84,7 @@ fn enforce_cert_inputs_gadget<CS: ConstraintSystem<FieldElement>>(
 // Simple test circuit, enforcing that the hash of all the witnesses equals the public input
 #[derive(Debug)]
 pub struct CertTestCircuit {
+    constant_present:                     bool,
     constant:                             Option<FieldElement>,
     cert_data_hash:                       Option<FieldElement>,
     num_constraints:                      u32,
@@ -90,6 +96,7 @@ impl ConstraintSynthesizer<FieldElement> for CertTestCircuit {
         assert!(self.num_constraints > 2);
         enforce_cert_inputs_gadget(
             cs.ns(|| "enforce witnesses == pub_ins"),
+            self.constant_present,
             self.constant,
             self.cert_data_hash,
             self.num_constraints
@@ -99,6 +106,7 @@ impl ConstraintSynthesizer<FieldElement> for CertTestCircuit {
 
 // Simple test circuit, enforcing that the hash of all the witnesses equals the public input
 pub struct CertTestCircuitWithAccumulators {
+    constant_present:                     bool,
     constant:                             Option<FieldElement>,
     cert_data_hash:                       Option<FieldElement>,
     deferred:                             Vec<FieldElement>, // Represents deferred data
@@ -148,6 +156,7 @@ impl ConstraintSynthesizer<FieldElement> for CertTestCircuitWithAccumulators {
 
         enforce_cert_inputs_gadget(
             cs.ns(|| "enforce witnesses == pub_ins"),
+            self.constant_present,
             self.constant,
             self.cert_data_hash,
             self.num_constraints - deferred_len
@@ -159,7 +168,8 @@ impl ConstraintSynthesizer<FieldElement> for CertTestCircuitWithAccumulators {
 
 pub fn generate_parameters(
     ps:              ProvingSystem,
-    num_constraints: u32
+    num_constraints: u32,
+    with_constant:   bool,
 ) -> Result<(ZendooProverKey, ZendooVerifierKey), ProvingSystemError>
 {
     let ck_g1 = get_g1_committer_key()?;
@@ -168,6 +178,7 @@ pub fn generate_parameters(
         ProvingSystem::Darlin => {
             let ck_g2 = get_g2_committer_key()?;
             let circ = CertTestCircuitWithAccumulators {
+                constant_present: with_constant,
                 constant: None,
                 cert_data_hash: None,
                 deferred: FinalDarlinDeferredData::<G1, G2>::generate_random::<_, Digest>(
@@ -183,6 +194,7 @@ pub fn generate_parameters(
         },
         ProvingSystem::CoboundaryMarlin => {
             let circ = CertTestCircuit {
+                constant_present: with_constant,
                 constant: None,
                 cert_data_hash: None,
                 num_constraints,
@@ -197,7 +209,7 @@ pub fn generate_parameters(
 pub fn generate_proof(
     pk:                                         &ZendooProverKey,
     zk:                                         bool,
-    constant:                                   &FieldElement,
+    constant:                                   Option<&FieldElement>,
     sc_id:                                      &FieldElement,
     epoch_number:                               u32,
     quality:                                    u64,
@@ -233,7 +245,8 @@ pub fn generate_proof(
             );
             let deferred_fes = deferred.to_field_elements().unwrap();
             let circ = CertTestCircuitWithAccumulators {
-                constant: Some(*constant),
+                constant_present: constant.is_some(),
+                constant: if constant.is_some() { Some(*constant.unwrap()) } else { None },
                 cert_data_hash: Some(cert_data_hash),
                 deferred: deferred_fes.clone(),
                 num_constraints
@@ -253,7 +266,8 @@ pub fn generate_proof(
         },
         ZendooProverKey::CoboundaryMarlin(pk) => {
             let circ = CertTestCircuit {
-                constant: Some(*constant),
+                constant_present: constant.is_some(),
+                constant: if constant.is_some() { Some(*constant.unwrap()) } else { None },
                 cert_data_hash: Some(cert_data_hash),
                 num_constraints
             };

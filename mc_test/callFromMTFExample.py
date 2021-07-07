@@ -21,10 +21,13 @@ def generate_params(params_dir, circuit_type, proving_system_type, segment_size 
     args.append(str(num_constraints))
     subprocess.check_call(args)
 
-def cert_proof_test(proof_path, params_dir, ps_type, bt_num, cf_num, zk, segment_size = SEGMENT_SIZE, num_constraints = NUM_CONSTRAINTS):
+def cert_proof_test(proof_path, params_dir, ps_type, bt_num, cf_num, zk, with_constant = True, segment_size = SEGMENT_SIZE, num_constraints = NUM_CONSTRAINTS):
 
     # Setup SNARK pk and vk
-    generate_params(params_dir, "cert", ps_type);
+    if with_constant:
+        generate_params(params_dir, "cert", ps_type);
+    else:
+        generate_params(params_dir, "cert_no_const", ps_type);
 
     # Generate random test data
     sc_id = generate_random_field_element_hex()
@@ -32,22 +35,29 @@ def cert_proof_test(proof_path, params_dir, ps_type, bt_num, cf_num, zk, segment
     quality = random.randint(0, 100)
     btr_fee = random.randint(0, 1000)
     ft_min_amount = random.randint(0, 5000)
-    constant = generate_random_field_element_hex()
     end_cum_comm_tree_root = generate_random_field_element_hex()
     pks = [binascii.b2a_hex(os.urandom(MC_PK_HASH_SIZE)) for i in xrange(bt_num)]
     amounts = [random.randint(0, 100) for i in xrange(bt_num)]
     custom_fields = [generate_random_field_element_hex() for i in xrange(cf_num)]
 
     # Generate and verify proof
-    args = ["./mcTest", "create", "cert", str(ps_type), "-v"]
+    circ_type = "cert"
+    if not with_constant:
+        circ_type = "cert_no_const"
+
+    args = ["./mcTest", "create", circ_type, str(ps_type), "-v"]
     if zk:
         args.append("-zk")
     args.append(str(proof_path))
     args.append(str(params_dir))
     args.append(str(segment_size))
-    args += [str(sc_id), str(epoch_number), str(quality), str(constant), str(end_cum_comm_tree_root), str(btr_fee), str(ft_min_amount), str(num_constraints)]
+    args += [str(sc_id), str(epoch_number), str(quality)]
 
-    args.append(str(bt_num))
+    if with_constant:
+        constant = generate_random_field_element_hex()
+        args.append(str(constant))
+
+    args += [str(end_cum_comm_tree_root), str(btr_fee), str(ft_min_amount), str(num_constraints), str(bt_num)]
     for (pk, amount) in zip(pks, amounts):
         args.append(str(pk))
         args.append(str(amount))
@@ -61,8 +71,13 @@ def cert_proof_test(proof_path, params_dir, ps_type, bt_num, cf_num, zk, segment
 
     # Delete files
     os.remove(proof_path)
-    os.remove(params_dir + str(ps_type) + str("_cert_test_pk"))
-    os.remove(params_dir + str(ps_type) + str("_cert_test_vk"))
+    pk_name = "_cert_test_pk"
+    vk_name = "_cert_test_vk"
+    if not with_constant:
+        pk_name = "_cert_no_const_test_pk"
+        vk_name = "_cert_no_const_test_vk"
+    os.remove(params_dir + str(ps_type) + pk_name)
+    os.remove(params_dir + str(ps_type) + vk_name)
 
 def csw_proof_test(proof_path, params_dir, ps_type, zk, cert_data_hash_present, segment_size = SEGMENT_SIZE, num_constraints = NUM_CONSTRAINTS):
 
@@ -119,6 +134,25 @@ if __name__ == "__main__":
     cert_proof_test(data_dir + str("cob_marlin_cert_test_proof"), data_dir, "cob_marlin", 0, 0, True)
     cert_proof_test(data_dir + str("cob_marlin_cert_test_proof"), data_dir, "cob_marlin", 0, 10, False)
     cert_proof_test(data_dir + str("cob_marlin_cert_test_proof"), data_dir, "cob_marlin", 0, 0, False)
+
+    # Test certificate proof no constant
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 10, 10, True, False)
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 10, 0, True, False)
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 10, 10, False, False)
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 10, 0, False, False)
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 0, 10, True, False)
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 0, 0, True, False)
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 0, 10, False, False)
+    cert_proof_test(data_dir + str("darlin_cert_no_const_test_proof"), data_dir, "darlin", 0, 0, False, False)
+
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 10, 10, True, False)
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 10, 0, True, False)
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 10, 10, False, False)
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 10, 0, False, False)
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 0, 10, True, False)
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 0, 0, True, False)
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 0, 10, False, False)
+    cert_proof_test(data_dir + str("cob_marlin_cert_no_const_test_proof"), data_dir, "cob_marlin", 0, 0, False, False)
 
     # Test csw proof
     csw_proof_test(data_dir + str("darlin_csw_test_proof"), data_dir, "darlin", True, True)

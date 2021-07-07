@@ -1618,6 +1618,7 @@ pub extern "C" fn zendoo_free_ginger_mht(
 #[repr(C)]
 pub enum TestCircuitType {
     Certificate,
+    CertificateNoConstant,
     CSW
 }
 
@@ -1813,7 +1814,11 @@ fn _zendoo_generate_mc_test_params(
     let params = match circ_type {
         TestCircuitType::Certificate => {
             params_path.push_str("cert_");
-            mc_test_circuits::cert::generate_parameters(ps_type, num_constraints)
+            mc_test_circuits::cert::generate_parameters(ps_type, num_constraints, true)
+        },
+        TestCircuitType::CertificateNoConstant => {
+            params_path.push_str("cert_no_const_");
+            mc_test_circuits::cert::generate_parameters(ps_type, num_constraints, false)
         },
         TestCircuitType::CSW => {
             params_path.push_str("csw_");
@@ -1927,7 +1932,7 @@ fn _zendoo_create_cert_test_proof(
     let rs_sc_id = try_read_raw_pointer!("sc_id", sc_id, ret_code, Err(ProvingSystemError::Other("".to_owned())));
     let rs_end_cum_comm_tree_root = try_read_raw_pointer!("end_cum_comm_tree_root", end_cum_comm_tree_root, ret_code, Err(ProvingSystemError::Other("".to_owned())));
     let rs_pk = try_read_raw_pointer!("sc_pk", sc_pk, ret_code, Err(ProvingSystemError::Other("".to_owned())));
-    let rs_constant = try_read_raw_pointer!("constant", constant, ret_code, Err(ProvingSystemError::Other("".to_owned())));
+    let rs_constant = try_read_optional_raw_pointer!("constant", constant, ret_code, Err(ProvingSystemError::Other("".to_owned())));
 
     // Read optional data
     let rs_custom_fields = try_read_optional_double_raw_pointer!(
